@@ -69,7 +69,7 @@ initial = portfolio.rebalance(RebalancePolicy(AlwaysTrigger(), target_mode=Targe
 print(initial.summary())
 portfolio.apply(initial)
 
-header(f"2. {DRIFT_DAY}: prices drifted, default policy (5/25 bands, trade to band edge)")
+header(f"2. {DRIFT_DAY}: prices drifted, default policy (quarterly check, 5/25 bands, to band edge)")
 drift_plan = portfolio.rebalance(default_policy(), DRIFT_DAY, market)
 print(drift_plan.summary())
 portfolio.apply(drift_plan)

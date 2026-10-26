@@ -10,6 +10,7 @@ from portfolio_rebalancer.money import ZERO
 from portfolio_rebalancer.rebalancing.bands import Band, FiveTwentyFive
 from portfolio_rebalancer.rebalancing.enums import TargetMode
 from portfolio_rebalancer.rebalancing.triggers import (
+    AllOf,
     AnyOf,
     CalendarTrigger,
     DriftTrigger,
@@ -37,15 +38,25 @@ class RebalancePolicy:
 def default_policy(
     band: Band | None = None,
     sector_limits: Mapping[Sector, Decimal] | None = None,
+    check_every: timedelta = timedelta(days=91),
+    detect_regime_change: bool = True,
     **overrides,
 ) -> RebalancePolicy:
-    """Best cost/effectiveness trade-off per the literature (see README): monitor often,
-    trade only out of 5/25 bands, to the band edge, cash flows first, never to a stale target."""
+    """Hybrid, the best cost/benefit in the backtest (results.md).
+
+    Trades when a position is out of its 5/25 band (or a sector over its cap)
+    and at least ``check_every`` has passed since the last rebalance; trades
+    to the band edge, cash flows first. Regime changes are checked every day
+    and stop trades toward a stale target.
+    """
     band = band or FiveTwentyFive()
-    triggers: list[TriggerPolicy] = [DriftTrigger(band), RegimeChangeTrigger()]
+    drift: TriggerPolicy = DriftTrigger(band)
     if sector_limits:
-        triggers.append(SectorLimitTrigger(sector_limits))
-    return RebalancePolicy(trigger=AnyOf(*triggers), band=band, **overrides)
+        drift = AnyOf(drift, SectorLimitTrigger(sector_limits))
+    trigger: TriggerPolicy = AllOf(CalendarTrigger(check_every), drift)
+    if detect_regime_change:
+        trigger = AnyOf(trigger, RegimeChangeTrigger())
+    return RebalancePolicy(trigger=trigger, band=band, **overrides)
 
 
 def calendar_policy(every: timedelta = timedelta(days=365), **overrides) -> RebalancePolicy:

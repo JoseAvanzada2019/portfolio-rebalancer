@@ -12,7 +12,7 @@ import math
 import re
 import sys
 import warnings
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -21,9 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from portfolio_rebalancer import (  # noqa: E402
     AbsoluteBand,
-    AllOf,
     Allocation,
-    CalendarTrigger,
     DriftTrigger,
     FixedPlusPercentCost,
     HistoricalRiskModel,
@@ -77,8 +75,8 @@ POLICIES: list[tuple[str, RebalancePolicy, bool]] = [
     ("Calendar quarterly", calendar_policy(timedelta(days=91)), False),
     ("Calendar yearly", calendar_policy(timedelta(days=365)), False),
     ("Threshold ±5pp, to target", RebalancePolicy(DriftTrigger(FIVE_PP), band=FIVE_PP, target_mode=TargetMode.TO_TARGET), False),
-    ("Hybrid quarterly + 5/25", RebalancePolicy(AllOf(CalendarTrigger(timedelta(days=91)), DriftTrigger())), False),
-    ("Default: 5/25, band edge", replace(default_policy(), trigger=DriftTrigger()), False),
+    ("Daily 5/25, band edge", RebalancePolicy(DriftTrigger()), False),
+    ("Default: hybrid quarterly + 5/25", default_policy(detect_regime_change=False), False),
     ("Default + regime re-optimization", default_policy(), True),
 ]
 

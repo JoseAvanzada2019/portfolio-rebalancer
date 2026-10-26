@@ -1051,3 +1051,97 @@ Esta respuesta tampoco quedó en la conversación publicada. Si querés que el a
 ## User
 
 sí, regenera la conversación y haz commit
+
+<details><summary>1 tool call(s)</summary>
+
+- `Bash` — Regenerate conversation export and check diff
+
+</details>
+
+## Claude
+
+La única coincidencia con "Gmail" es mi propia frase diciendo que tu email no aparece; la dirección en sí no está. Hago el commit y el push.
+
+<details><summary>1 tool call(s)</summary>
+
+- `Bash` — Commit and push updated conversation
+
+</details>
+
+## Claude
+
+Regeneré `docs/llm-conversation.md` y lo subí en el commit `04b2973`. Ahora incluye la creación del repo y el primer push: https://github.com/JoseAvanzada2019/portfolio-rebalancer
+
+Esta respuesta tampoco queda en el archivo, porque la conversación siempre va un mensaje por detrás. Para el entregable no hace falta: lo que se publicó cubre todo el trabajo.
+
+---
+
+## User
+
+haz el híbrido la política default
+
+<details><summary>5 tool call(s)</summary>
+
+- `Read` portfolio-rebalancer/lib/portfolio_rebalancer/rebalancing/policies.py
+- `Bash` — Find references to default policy
+- `Edit` portfolio-rebalancer/lib/portfolio_rebalancer/rebalancing/policies.py
+- `Bash` — Import AllOf, add default-policy tests, run suite
+- `Bash` — Replace weak test with real regime test
+
+</details>
+
+## Claude
+
+Los 60 tests pasan. Ahora actualizo el backtest con la nueva default y lo vuelvo a correr.
+
+<details><summary>2 tool call(s)</summary>
+
+- `Bash` — Update backtest policies, lint, rerun
+- `Bash` — Fix imports, recount regime reasons, check walkthrough
+
+</details>
+
+## Claude
+
+Los conteos son idénticos. Ahora actualizo los textos: el encabezado de la walkthrough, los hallazgos y el README.
+
+<details><summary>5 tool call(s)</summary>
+
+- `Bash` — Update walkthrough header and results findings
+- `Bash` — Locate README lines to update
+- `Bash` — Show context of lines to change
+- `Bash` — Update README for hybrid default
+- `Bash` — Add regime recalibration next step, verify
+
+</details>
+
+## Claude
+
+Ya está: `default_policy()` ahora es el híbrido. Los 60 tests pasan (2 nuevos) y la demo y la walkthrough corren bien. **Todavía no hice commit ni push.**
+
+**Cómo funciona la nueva default:**
+- Opera solo si una posición sale de su banda 5/25 **y** pasaron al menos 91 días desde el último rebalanceo.
+- Opera hasta el borde de la banda y usa primero la caja disponible.
+- El cambio de régimen se sigue revisando **todos los días**, aunque no se haya cumplido el intervalo. Si se detecta, no se opera hacia un target obsoleto.
+- Nuevos parámetros: `check_every` (por defecto un trimestre) y `detect_regime_change` (para apagar el chequeo de régimen).
+- La política diaria anterior sigue disponible como `RebalancePolicy(DriftTrigger())`.
+
+**Tests nuevos:**
+- Un activo fuera de banda a los 30 días no dispara rebalanceo con la default, pero sí con `check_every=30 días`.
+- Si la tasa sube 200bps antes de que se cumpla el intervalo, el plan pide re-optimizar. Con `detect_regime_change=False`, no.
+
+**Backtest:** lo volví a correr. La fila de la nueva default dio exactamente los mismos números que el híbrido de la corrida anterior, lo que confirma que es la misma política. La variante con régimen cambió levemente (por ejemplo, el turnover en META/AAPL bajó de 48% a 46%). El conteo de razones del trigger de régimen no cambió (109 y 242 por sensibilidad a tasas).
+
+**Documentación actualizada:**
+- **`results.md`:** los hallazgos explican que el híbrido pasó a ser la default por estos resultados, y la fila "Daily 5/25, band edge" aparece como la default anterior.
+- **README:** explica el cambio y cuenta 60 tests en lugar de 58.
+- **Next steps:** recalibrar el trigger de régimen quedó como punto propio.
+- **Limpieza:** saqué dos imports sin uso en los tests.
+
+¿Hago commit y push al repo público?
+
+---
+
+## User
+
+si

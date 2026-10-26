@@ -18,7 +18,7 @@ portfolio.apply(plan)             # records the trades in the ledger
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev,backtest]"
-.venv/bin/python -m pytest                    # 58 tests
+.venv/bin/python -m pytest                    # 60 tests
 .venv/bin/python lib/examples/walkthrough.py  # feature tour on synthetic data
 .venv/bin/python lib/examples/demo.py         # backtest on real data -> results.md
 ```
@@ -137,7 +137,14 @@ rebalanced often earns more, but only because it ends up taking more risk.
 
 **Cheapest:** cash-flow rebalancing, then wide bands traded to the edge.
 **Most effective over medium and long horizons (net of costs):** the hybrid.
-The default policy combines all of them.
+
+`default_policy()` is that hybrid: a position must be out of its 5/25 band
+and at least a quarter must have passed since the last rebalance; it then
+trades to the band edge, cash flows first, and a regime change (checked every
+day) blocks trading toward a stale target. The first version monitored and
+traded every day; the backtest on real data ([results.md](results.md)) showed
+that, with a fixed fee per order, trading to the edge daily causes many small
+trades, while the quarterly hybrid had the best cost/benefit.
 
 *The references were cited from memory during the design conversation. Check
 the exact titles and years before quoting them.*
@@ -225,8 +232,8 @@ Portfolio (ledger ─► positions, cash) ──snapshot(as_of)──► Rebalan
   rebalancing layer never depends on the domain object that calls it (no
   import cycles).
 * **The policy is pluggable** (Strategy pattern): triggers compose with
-  `AnyOf` / `AllOf`, e.g. the hybrid "check every 90 days, trade only if out
-  of band" is `AllOf(CalendarTrigger(timedelta(days=90)), DriftTrigger())`.
+  `AnyOf` / `AllOf`. The default is
+  `AnyOf(AllOf(CalendarTrigger(timedelta(days=91)), DriftTrigger()), RegimeChangeTrigger())`.
 * **A new target is executed in full.** Band-edge trading is for *drift*. A
   new target is a strategic decision, so the next rebalance goes all the way
   to it.
@@ -256,7 +263,7 @@ Portfolio (ledger ─► positions, cash) ──snapshot(as_of)──► Rebalan
 
 ## Tests
 
-`.venv/bin/python -m pytest` runs 58 tests, in three files:
+`.venv/bin/python -m pytest` runs 60 tests, in three files:
 
 | Area | What is verified | File |
 |---|---|---|
@@ -266,7 +273,7 @@ Portfolio (ledger ─► positions, cash) ──snapshot(as_of)──► Rebalan
 | Portfolio target | unknown symbols rejected; new instrument joins the universe; foreign currency rejected | `test_domain.py` |
 | Bands | absolute, relative, 5/25 (tighter wins), zero target | `test_rebalancing.py` |
 | Requirement example (40/60 META/AAPL) | initial buy; META +50% → sell META, buy AAPL back to 40/60; no trades inside the band | `test_rebalancing.py` |
-| Default policy | trades to the band edge; whole shares still land inside the band; cash flows used before selling; sector cap forces the sector back | `test_rebalancing.py` |
+| Default policy | trades to the band edge; whole shares still land inside the band; cash flows used before selling; sector cap forces the sector back; waits for the quarterly check; regime change detected between checks | `test_rebalancing.py` |
 | Target changes | new instrument bought and removed one liquidated; new target executed in full; plan for an old target rejected; liquidation ignores minimum trade size | `test_rebalancing.py` |
 | Execution constraints | whole vs fractional shares; fees reserved and recorded; tiny and expensive trades skipped with a reason; cash buffer kept | `test_rebalancing.py` |
 | Triggers | calendar; hybrid (calendar AND drift) | `test_rebalancing.py` |
@@ -292,6 +299,11 @@ Portfolio (ledger ─► positions, cash) ──snapshot(as_of)──► Rebalan
   volume and spread the rest over several days (with sells and buys kept
   balanced so cash never goes negative). This needs volume data in
   `PriceHistory` and an impact model next to `CostModel`.
+* **Recalibrate `RegimeChangeTrigger`.** In the backtest it re-optimized about
+  7 times a year, almost always on sector rate sensitivity, which is noisy
+  when estimated from daily T-bill changes. Estimate it over a longer window
+  (or weekly data), widen its threshold, and add a cooldown between
+  re-optimizations.
 * Real data sources: implement `MarketDataProvider` (FRED for the risk-free
   rate, a market-data API for prices). See the backtest task below.
 * Multiple currencies / FX: rejected explicitly for now.
@@ -311,8 +323,9 @@ cost. Write the results to `results.md`.
 **Status: done.** `lib/examples/demo.py` implements it and
 [results.md](results.md) has the results. The two main findings feed the
 next steps above: with a fixed fee per order, trading exactly to the band
-edge produces many small trades (the quarterly hybrid did better), and the
-regime trigger fires too often on sector rate sensitivity.
+edge produces many small trades (the quarterly hybrid did better and is now
+the default), and the regime trigger fires too often on sector rate
+sensitivity (still open).
 
 ### 1. Data
 
@@ -352,8 +365,8 @@ regime trigger fires too often on sector rate sensitivity.
 | Buy and hold | invest once, never rebalance |
 | Calendar monthly / quarterly / yearly | `calendar_policy(every=timedelta(days=30 / 91 / 365))` |
 | Threshold to target | `RebalancePolicy(DriftTrigger(AbsoluteBand(Decimal("0.05"))), target_mode=TargetMode.TO_TARGET)` |
-| Hybrid | `RebalancePolicy(AllOf(CalendarTrigger(timedelta(days=91)), DriftTrigger()))` |
-| Default without regime check | `default_policy()` with the trigger replaced by `AnyOf(DriftTrigger())` |
+| Daily 5/25, band edge (first default) | `RebalancePolicy(DriftTrigger())` |
+| Default: hybrid quarterly + 5/25 | `default_policy(detect_regime_change=False)` |
 | Default, regime-aware | `default_policy()`; when a plan has `requires_reoptimization`, build a new target with `InverseVolatility(HistoricalRiskModel(stocks), risk_target=Decimal("0.20"))` for the same universe, `set_allocation` it and rebalance again |
 
 ### 3. Metrics (per policy and universe)

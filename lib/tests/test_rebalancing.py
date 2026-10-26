@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -13,14 +13,18 @@ from portfolio_rebalancer import (
     DriftTrigger,
     FiveTwentyFive,
     FixedPlusPercentCost,
+    MarketContext,
     Portfolio,
+    PriceHistory,
+    PricePoint,
+    RatePoint,
     RebalancePolicy,
     RelativeBand,
+    RiskFreeRate,
     Sector,
     Side,
     StalePlanError,
     TargetMode,
-    Transaction,
     calendar_policy,
     default_policy,
 )
@@ -86,6 +90,24 @@ class TestDefaultPolicy:
         # META 50% -> upper edge 45% (sell 4 x 150 = 600), AAPL gets the proceeds
         assert orders_by_symbol(plan) == {"META": (Side.SELL, 4), "AAPL": (Side.BUY, 3)}
         assert plan.weights_after["META"] == Decimal("0.45")
+
+    def test_waits_for_the_check_interval(self, funded, meta):
+        invested(funded)
+        month_later = D1 + timedelta(days=30)
+        meta.update_price(150, month_later)
+        assert not funded.rebalance(default_policy(), as_of=month_later).triggered
+        assert funded.rebalance(default_policy(check_every=timedelta(days=30)), as_of=month_later).triggered
+
+    def test_regime_change_is_checked_every_day(self, funded):
+        rates = RiskFreeRate("T-Bill", "3M", [RatePoint(D0, "0.02"), RatePoint(D2, "0.04")])
+        market = MarketContext(rates, PriceHistory([PricePoint(D0, 100)]))
+        funded.set_allocation(Allocation.from_percentages({"META": 40, "AAPL": 60}).with_context(market.as_of(D0)))
+        invested(funded)
+        years = timedelta(days=3650)
+        plan = funded.rebalance(default_policy(check_every=years), as_of=D2, market=market)
+        assert plan.requires_reoptimization and "+200bps" in plan.reasons[0]
+        without = funded.rebalance(default_policy(check_every=years, detect_regime_change=False), as_of=D2, market=market)
+        assert not without.triggered
 
     def test_whole_shares_land_inside_band(self):
         # Coarse shares (one META share ~1.4% of the portfolio): exact band edges are unreachable.
